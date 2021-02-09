@@ -95,6 +95,15 @@ except ValueError:
     print("Invalid number of parameters.", file=sys.stderr)
     raise SystemExit
 
+
+if work_arg == '--list-padding':
+    for key in padding_opts:
+        if padding_arg in key:
+            print(key, end=" ")
+    print()
+    sys.exit(0)
+
+
 try:
     work_choice = work_opts[work_arg]
 except KeyError:
