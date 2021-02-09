@@ -1,6 +1,6 @@
 import sys
 from itertools import count, cycle, islice, chain
-
+from inspect import signature
 
 
 # Size config
@@ -67,6 +67,18 @@ padding_opts = {
     "sub-aarch64": lambda i: asm(repeat(i, map('"sub %{0}, %{0}, %{0}\\n"'.format, range(2, 7)))),
     "xor-aarch64": lambda i: asm(repeat(i, map('"eor %{0}, %{0}, %{0}\\n"'.format, range(2, 7)))),
 
+    # Tests for the number of scheduler entries, by making a series of add instructions which are 
+    # dependent on the work load instructions (this should only be used with the mem v)
+    "depadd-x86": {
+        "padding0" : lambda i: asm(repeat(i, map('"add %7, %{0}\\n"'.format, range(2, 7)))),
+        "padding1" : lambda i: asm(repeat(i, map('"add %8, %{0}\\n"'.format, range(2, 7))))
+    },
+
+    "depadd-aarch64": {
+        "padding0" : lambda i: asm(repeat(i, map('"add %{0}, %{0}, %7\\n"'.format, range(2, 7)))),
+        "padding1" : lambda i: asm(repeat(i, map('"add %{0}, %{0}, %8\\n"'.format, range(2, 7))))
+    },
+
     # Tests for the number of flag rename registers
     "subs-aarch64": lambda i: asm(repeat(i, map('"subs %{0}, %{0}, %{0}\\n"'.format, range(2, 7)))),
 
@@ -131,10 +143,21 @@ work = work_choice["work"]
 hash_mem = work_choice.get("hash_mem", "")
 singular = work_choice.get("singular", False)
 
-padding = padding_choice["padding"]
+if 'padding' in padding_choice:
+    padding0 = padding1 = padding_choice["padding"]
+else:
+    padding0 = padding_choice["padding0"]
+    padding1 = padding_choice["padding1"]
+
 init = padding_choice.get("init", "0")
 store_buffer_size = padding_choice.get("store_buffer_size", 1)
 
+# padding_params = signature(padding_raw).parameters
+# if len(padding_params) == 1:
+#     print('adapting padding', padding_params, file=sys.stderr)
+#     padding = lambda i, _: padding_raw(i)
+# else:
+#     padding = padding_raw
 
 
 setup = """\
@@ -237,11 +260,11 @@ print(setup.format(hash_mem=hash_mem))
 
 if singular:
     for size in test_sizes:
-        print(time_rob.format(n=size, init=init, store_buffer_size=store_buffer_size, loops=loops, variant="",          work_0=work, work_1="", padding_0=padding(size), padding_1=""))
+        print(time_rob.format(n=size, init=init, store_buffer_size=store_buffer_size, loops=loops, variant="",          work_0=work, work_1="", padding_0=padding0(size), padding_1=""))
 else:
     for size in test_sizes:
-        print(time_rob.format(n=size, init=init, store_buffer_size=store_buffer_size, loops=loops, variant="",          work_0=work.format(0), work_1=work.format(1), padding_0=padding(size), padding_1=padding(size)))
-        print(time_rob.format(n=size, init=init, store_buffer_size=store_buffer_size, loops=loops, variant="baseline_", work_0=work.format(0), work_1=work.format(0), padding_0=padding(size), padding_1=padding(size)))
+        print(time_rob.format(n=size, init=init, store_buffer_size=store_buffer_size, loops=loops, variant="",          work_0=work.format(0), work_1=work.format(1), padding_0=padding0(size), padding_1=padding1(size)))
+        print(time_rob.format(n=size, init=init, store_buffer_size=store_buffer_size, loops=loops, variant="baseline_", work_0=work.format(0), work_1=work.format(0), padding_0=padding0(size), padding_1=padding1(size)))
 
 run_tests = "".join(f"""\
         results[{idx}] += time_rob_{size:06}(mem + {2 * idx}, mem + {2 * idx + 1});
